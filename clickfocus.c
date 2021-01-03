@@ -10,14 +10,10 @@
 int
 main (int argc, char **argv)
 {
-
   uint32_t values[3];
-
   xcb_connection_t *dpy;
   xcb_screen_t *screen;
-  xcb_drawable_t win;
-  xcb_drawable_t root;
-
+  xcb_drawable_t root, win;
   xcb_generic_event_t *ev;
   xcb_get_geometry_reply_t *geom;
 
@@ -27,12 +23,9 @@ main (int argc, char **argv)
   screen = xcb_setup_roots_iterator (xcb_get_setup (dpy)).data;
   root = screen->root;
 
-//  xcb_grab_key (dpy, 1, root, XCB_MOD_MASK_2, XCB_NO_SYMBOL,
-//		XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC);
-
-  xcb_grab_button (dpy, 0, root, XCB_EVENT_MASK_BUTTON_PRESS |
+  xcb_grab_button (dpy, 1, root, XCB_EVENT_MASK_BUTTON_PRESS |
 		   XCB_EVENT_MASK_BUTTON_RELEASE, XCB_GRAB_MODE_ASYNC,
-		   XCB_GRAB_MODE_ASYNC, root, XCB_NONE, 1, XCB_MOD_MASK_ANY); //MASK_1);
+		   XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE, 1, XCB_MOD_MASK_1);
 
   xcb_grab_button (dpy, 0, root, XCB_EVENT_MASK_BUTTON_PRESS |
 		   XCB_EVENT_MASK_BUTTON_RELEASE, XCB_GRAB_MODE_ASYNC,
@@ -47,26 +40,35 @@ main (int argc, char **argv)
       {
 	xcb_button_press_event_t *e;
 	e = (xcb_button_press_event_t *) ev;
+	/* state win=64 alt=8 ctrl=4 shift=1   detail which mouse button pressed 1=left 3=right */
+	printf ("state %d detail %d\n", e->state, e->detail);
 	win = e->child;
-	values[0] = XCB_STACK_MODE_ABOVE;
-	xcb_configure_window (dpy, win, XCB_CONFIG_WINDOW_STACK_MODE, values);
-	geom =
-	  xcb_get_geometry_reply (dpy, xcb_get_geometry (dpy, win), NULL);
-	if (1 == e->detail) {
-	  values[2] = 1;
-	  xcb_warp_pointer (dpy, XCB_NONE, win, 0, 0, 0, 0, 1, 1);
+
+	if (e->state == 8) {	/* alt key */
+	  values[0] = XCB_STACK_MODE_ABOVE;
+	  xcb_configure_window (dpy, win, XCB_CONFIG_WINDOW_STACK_MODE, values);
+	  geom =
+	    xcb_get_geometry_reply (dpy, xcb_get_geometry (dpy, win), NULL);
+	  if (1 == e->detail) {
+	    values[2] = 1;
+	    xcb_warp_pointer (dpy, XCB_NONE, win, 0, 0, 0, 0, 1, 1);
+	  }
+	  else {
+	    values[2] = 3;
+	    xcb_warp_pointer (dpy, XCB_NONE, win, 0, 0, 0, 0, geom->width,
+			      geom->height);
+	  }
+	  xcb_grab_pointer (dpy, 0, root, XCB_EVENT_MASK_BUTTON_RELEASE
+			    | XCB_EVENT_MASK_BUTTON_MOTION |
+			    XCB_EVENT_MASK_POINTER_MOTION_HINT,
+			    XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, root,
+			    XCB_NONE, XCB_CURRENT_TIME);
+	  xcb_flush (dpy);
+	} else {
+	  xcb_set_input_focus (dpy, XCB_INPUT_FOCUS_POINTER_ROOT, win,
+			       XCB_CURRENT_TIME);
+	  xcb_flush (dpy);
 	}
-	else {
-	  values[2] = 3;
-	  xcb_warp_pointer (dpy, XCB_NONE, win, 0, 0, 0, 0, geom->width,
-			    geom->height);
-	}
-	xcb_grab_pointer (dpy, 0, root, XCB_EVENT_MASK_BUTTON_RELEASE
-			  | XCB_EVENT_MASK_BUTTON_MOTION |
-			  XCB_EVENT_MASK_POINTER_MOTION_HINT,
-			  XCB_GRAB_MODE_ASYNC, XCB_GRAB_MODE_ASYNC, root,
-			  XCB_NONE, XCB_CURRENT_TIME);
-	xcb_flush (dpy);
       }
       break;
 
@@ -75,8 +77,9 @@ main (int argc, char **argv)
 	xcb_query_pointer_reply_t *pointer;
 	pointer =
 	  xcb_query_pointer_reply (dpy, xcb_query_pointer (dpy, root), 0);
-	if (values[2] == 1) {	/* move */
-	  geom = xcb_get_geometry_reply (dpy, xcb_get_geometry (dpy, win), NULL);
+	if (values[2] == 1) {	/* left button is move */
+	  geom =
+	    xcb_get_geometry_reply (dpy, xcb_get_geometry (dpy, win), NULL);
 	  values[0] =
 	    (pointer->root_x + geom->width >
 	     screen->width_in_pixels) ? (screen->width_in_pixels -
@@ -90,8 +93,9 @@ main (int argc, char **argv)
 				values);
 	  xcb_flush (dpy);
 	}
-	else if (values[2] == 3) {	/* resize */
-	  geom = xcb_get_geometry_reply (dpy, xcb_get_geometry (dpy, win), NULL);
+	else if (values[2] == 3) {	/* right button is resize */
+	  geom =
+	    xcb_get_geometry_reply (dpy, xcb_get_geometry (dpy, win), NULL);
 	  values[0] = pointer->root_x - geom->x;
 	  values[1] = pointer->root_y - geom->y;
 	  xcb_configure_window (dpy, win,
@@ -103,8 +107,8 @@ main (int argc, char **argv)
       break;
 
     case XCB_BUTTON_RELEASE:
-      xcb_set_input_focus (dpy, XCB_INPUT_FOCUS_POINTER_ROOT, win, XCB_CURRENT_TIME);
-      xcb_set_input_focus (dpy, XCB_INPUT_FOCUS_NONE, win, XCB_CURRENT_TIME);
+      xcb_set_input_focus (dpy, XCB_INPUT_FOCUS_POINTER_ROOT, win, 
+           XCB_CURRENT_TIME);
       xcb_ungrab_pointer (dpy, XCB_CURRENT_TIME);
       xcb_flush (dpy);
       break;

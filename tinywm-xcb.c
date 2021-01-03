@@ -1,6 +1,6 @@
 /* TinyWM is written by Nick Welch <mack@incise.org>, 2005.
  * TinyWM-XCB is rewritten by Ping-Hsun Chen <penkia@gmail.com>, 2010
- *
+ * gcc -lxcb my.c
  * This software is in the public domain
  * and is provided AS IS, with NO WARRANTY. */
 
@@ -88,6 +88,7 @@ int main (int argc, char **argv)
 
         case XCB_BUTTON_RELEASE:
 			xcb_set_input_focus(dpy,XCB_INPUT_FOCUS_POINTER_ROOT,win,XCB_CURRENT_TIME);
+			xcb_set_input_focus(dpy,XCB_INPUT_FOCUS_NONE,win,XCB_CURRENT_TIME);
 			xcb_ungrab_pointer(dpy, XCB_CURRENT_TIME);
 			xcb_flush(dpy); 
         break;
