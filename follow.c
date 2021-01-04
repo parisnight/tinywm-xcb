@@ -7,20 +7,29 @@
 
 int main(int argc, char **argv)
 {
-  uint32_t values[3], valuet[1], button, firstdown = 1;
+  uint32_t values[3], button;
   xcb_connection_t *dpy;
-  xcb_screen_t *screen;
+  xcb_screen_t *screen;  /* screen->width_in_pixels */
   xcb_drawable_t win, root;
-  xcb_generic_event_t *ev;
   xcb_get_geometry_reply_t *geom;
   xcb_query_pointer_reply_t *pointer, *pointer1;
+  xcb_generic_event_t *ev;
   xcb_button_press_event_t *e;
   xcb_enter_notify_event_t *enter; 
   xcb_create_notify_event_t *create;
+  const uint32_t select_input_val[] = {
+    /* good grief, new xapps don't appear
+        XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT | */
+        XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY |
+        XCB_EVENT_MASK_ENTER_WINDOW |
+        XCB_EVENT_MASK_LEAVE_WINDOW | XCB_EVENT_MASK_STRUCTURE_NOTIFY |
+        XCB_EVENT_MASK_PROPERTY_CHANGE |
+        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE
+        | XCB_EVENT_MASK_FOCUS_CHANGE
+  };
 
   dpy = xcb_connect(NULL, NULL);
-  if (xcb_connection_has_error(dpy))
-    return 1;
+  if (xcb_connection_has_error(dpy)) return(1);
 
   screen = xcb_setup_roots_iterator(xcb_get_setup(dpy)).data;
   root = screen->root;
@@ -32,18 +41,7 @@ int main(int argc, char **argv)
   xcb_grab_button(dpy, 0, root, XCB_EVENT_MASK_BUTTON_PRESS |
                   XCB_EVENT_MASK_BUTTON_RELEASE, XCB_GRAB_MODE_ASYNC,
                   XCB_GRAB_MODE_ASYNC, root, XCB_NONE, 3, XCB_MOD_MASK_1);
-
-  const uint32_t select_input_val[] = {
-    /*** good grief, new xapps don't appear
-    XCB_EVENT_MASK_SUBSTRUCTURE_REDIRECT |
-      */ XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY |
-    XCB_EVENT_MASK_ENTER_WINDOW |
-        XCB_EVENT_MASK_LEAVE_WINDOW | XCB_EVENT_MASK_STRUCTURE_NOTIFY |
-        XCB_EVENT_MASK_PROPERTY_CHANGE |
-        XCB_EVENT_MASK_BUTTON_PRESS | XCB_EVENT_MASK_BUTTON_RELEASE
-        | XCB_EVENT_MASK_FOCUS_CHANGE
-  };
-  xcb_change_window_attributes(dpy, screen->root,
+  xcb_change_window_attributes(dpy, root,
                                XCB_CW_EVENT_MASK, select_input_val);
   xcb_flush(dpy);
 
@@ -57,11 +55,11 @@ int main(int argc, char **argv)
     case XCB_CREATE_NOTIFY:
       printf("create notify\n");
       create = (xcb_create_notify_event_t *) ev;
-      printf("Mouse entered window %" PRIu32 " \n", create->window);
-      valuet[1] = XCB_EVENT_MASK_PROPERTY_CHANGE
-          | (XCB_EVENT_MASK_ENTER_WINDOW);
+      printf("Created window %" PRIu32 " \n", create->window);
+      values[0] = XCB_EVENT_MASK_PROPERTY_CHANGE
+          | XCB_EVENT_MASK_ENTER_WINDOW;
       xcb_change_window_attributes_checked(dpy, create->window,
-                                           XCB_CW_EVENT_MASK, valuet);
+                                           XCB_CW_EVENT_MASK, values);
       break;
     case XCB_DESTROY_NOTIFY:
       printf("destroy notify\n");
@@ -72,9 +70,8 @@ int main(int argc, char **argv)
 
     case XCB_ENTER_NOTIFY:
       enter = (xcb_enter_notify_event_t *) ev;
-      printf("Mouse entered window %" PRIu32
-             ", at coordinates (%" PRIi16 ",%" PRIi16 ")\n",
-             enter->event, enter->event_x, enter->event_y);
+      printf("Enter window %d (%d %d)\n",
+              enter->event, enter->event_x, enter->event_y);
       xcb_set_input_focus(dpy, XCB_INPUT_FOCUS_POINTER_ROOT,
                           enter->event, XCB_CURRENT_TIME);
       break;
@@ -91,13 +88,9 @@ int main(int argc, char **argv)
       button = e->detail;
       values[0] = XCB_STACK_MODE_ABOVE;
       xcb_configure_window(dpy, win, XCB_CONFIG_WINDOW_STACK_MODE, values);
-      if (firstdown) {
-        pointer1 =
+      pointer1 =
             xcb_query_pointer_reply(dpy, xcb_query_pointer(dpy, root), 0);
-        geom =
-            xcb_get_geometry_reply(dpy, xcb_get_geometry(dpy, win), NULL);
-        printf("press %d %d\n", pointer1->root_x, pointer1->root_y);
-      }
+      geom = xcb_get_geometry_reply(dpy, xcb_get_geometry(dpy, win), NULL);
       xcb_grab_pointer(dpy, 0, root, XCB_EVENT_MASK_BUTTON_RELEASE
                        | XCB_EVENT_MASK_BUTTON_MOTION |
                        XCB_EVENT_MASK_POINTER_MOTION_HINT,
@@ -110,8 +103,6 @@ int main(int argc, char **argv)
       pointer =
           xcb_query_pointer_reply(dpy, xcb_query_pointer(dpy, root), 0);
       if (button == 1) {       /* move */
-        firstdown = 0;
-        /* screen->width_in_pixels */
         values[0] = geom->x + pointer->root_x - pointer1->root_x;
         values[1] = geom->y + pointer->root_y - pointer1->root_y;
         printf("motion_nofify %d %d\n", values[0], values[1]);
@@ -129,14 +120,13 @@ int main(int argc, char **argv)
 
     case XCB_BUTTON_RELEASE:
       printf("button release\n");
-      firstdown = 1;
       xcb_set_input_focus(dpy, XCB_INPUT_FOCUS_POINTER_ROOT, win,
                           XCB_CURRENT_TIME);
       xcb_ungrab_pointer(dpy, XCB_CURRENT_TIME);
       break;
 
     default:
-      printf("response_type %d\n", ev->response_type);
+      printf("Default event handler response_type %d\n", ev->response_type);
     }
     xcb_flush(dpy);
   }
