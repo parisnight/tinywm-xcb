@@ -1,4 +1,5 @@
 /* follow mouse wm  2020.10.15 */
+/* gcc -lxcb follow.c */
 
 #include <xcb/xcb.h>
 #include <stdio.h>
@@ -12,7 +13,7 @@ int main(int argc, char **argv)
   xcb_screen_t *screen;  /* screen->width_in_pixels */
   xcb_drawable_t win, root;
   xcb_get_geometry_reply_t *geom;
-  xcb_query_pointer_reply_t *pointer, *pointer1;
+  xcb_query_pointer_reply_t *pt, *pt1;
   xcb_generic_event_t *ev;
   xcb_button_press_event_t *e;
   xcb_enter_notify_event_t *enter; 
@@ -78,7 +79,7 @@ int main(int argc, char **argv)
 
     case XCB_LEAVE_NOTIFY:
       printf("leave notify\n");
-      //xcb_set_input_focus (dpy, XCB_INPUT_FOCUS_NONE, win, XCB_CURRENT_TIME);
+      /*xcb_set_input_focus (dpy, XCB_INPUT_FOCUS_NONE, win, XCB_CURRENT_TIME);*/
       break;
 
     case XCB_BUTTON_PRESS:
@@ -88,8 +89,7 @@ int main(int argc, char **argv)
       button = e->detail;
       values[0] = XCB_STACK_MODE_ABOVE;
       xcb_configure_window(dpy, win, XCB_CONFIG_WINDOW_STACK_MODE, values);
-      pointer1 =
-            xcb_query_pointer_reply(dpy, xcb_query_pointer(dpy, root), 0);
+      pt1 = xcb_query_pointer_reply(dpy, xcb_query_pointer(dpy, root), 0);
       geom = xcb_get_geometry_reply(dpy, xcb_get_geometry(dpy, win), NULL);
       xcb_grab_pointer(dpy, 0, root, XCB_EVENT_MASK_BUTTON_RELEASE
                        | XCB_EVENT_MASK_BUTTON_MOTION |
@@ -100,18 +100,18 @@ int main(int argc, char **argv)
 
     case XCB_MOTION_NOTIFY: /* need to grab_pointer in button press */
       printf("motion notify\n");
-      pointer =
-          xcb_query_pointer_reply(dpy, xcb_query_pointer(dpy, root), 0);
+      pt = xcb_query_pointer_reply(dpy, xcb_query_pointer(dpy, root), 0);
+      if (!win) break; /* safety to avoid configure null win=0 segfault */
       if (button == 1) {       /* move */
-        values[0] = geom->x + pointer->root_x - pointer1->root_x;
-        values[1] = geom->y + pointer->root_y - pointer1->root_y;
-        printf("motion_nofify %d %d\n", values[0], values[1]);
+        values[0] = geom->x + pt->root_x - pt1->root_x;
+        values[1] = geom->y + pt->root_y - pt1->root_y;
+        /* printf("motion_nofify %d %d\n", values[0], values[1]); */
         xcb_configure_window(dpy, win,
                              XCB_CONFIG_WINDOW_X |
                              XCB_CONFIG_WINDOW_Y, values);
       } else if (button == 3) {        /* resize */
-        values[0] = geom->width + pointer->root_x - pointer1->root_x;
-        values[1] = geom->height + pointer->root_y - pointer1->root_y;
+        values[0] = geom->width + pt->root_x - pt1->root_x;
+        values[1] = geom->height + pt->root_y - pt1->root_y;
         xcb_configure_window(dpy, win,
                              XCB_CONFIG_WINDOW_WIDTH |
                              XCB_CONFIG_WINDOW_HEIGHT, values);
